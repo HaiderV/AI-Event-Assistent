@@ -1,0 +1,506 @@
+﻿
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CampusCare - College Feedback & Sentiment Analysis</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; }
+  </style>
+</head>
+<body class="bg-[#F8FAFC] text-slate-900 antialiased min-h-screen">
+
+  <div id="app"></div>
+
+  <script>
+    // State management
+    let userRole = 'student'; // 'student' or 'admin'
+    let currentView = 'signin'; // 'signin', 'signup', 'dashboard', 'submit', 'history', 'admin-dashboard', 'admin-feedback'
+    let user = { name: 'Vivaan Sharma', email: '25bca1234@caias.in' };
+    
+    let adminSentimentTab = 'All';
+    let adminCategoryFilter = 'All';
+    let adminSearch = '';
+    let categoryFilter = 'All categories';
+
+    const INITIAL_COMPLAINTS = [
+      { id: 'CC-0006', title: 'Wi-Fi disconnects frequently during online tests', description: 'During online assessments in Lab 3, network keeps dropping every 10 minutes causing submission delays.', category: 'IT & Network', sentiment: 'Negative', priority: 'High', status: 'Submitted', confidence: 94.2, date: '26/10/2026' },
+      { id: 'CC-0005', title: 'Poor wifi on 4th floor.', description: 'Wi-Fi keeps dropping in classroom 402 during lectures.', category: 'IT & Network', sentiment: 'Negative', priority: 'High', status: 'Submitted', confidence: 88.4, date: '10/09/2026' },
+      { id: 'CC-0004', title: 'Outdated lab equipment in EE dept', description: 'Oscilloscopes in circuit lab 2 are faulty and inaccurate.', category: 'Facilities & Infra', sentiment: 'Negative', priority: 'Medium', status: 'Being reviewed', confidence: 84.2, date: '08/09/2026' },
+      { id: 'CC-0003', title: 'Great library quiet study pods', description: 'The newly opened study pods are extremely silent, clean, and comfortable for exam prep.', category: 'Facilities & Infra', sentiment: 'Positive', priority: 'Low', status: 'Resolved', confidence: 93.5, date: '02/09/2026' },
+      { id: 'CC-0002', title: 'Cafeteria lunch menu has average options', description: 'The menu standard is neutral, not bad but could use more healthy salad choices.', category: 'Dining & Mess', sentiment: 'Neutral', priority: 'Low', status: 'Submitted', confidence: 62.0, date: '28/08/2026' },
+      { id: 'CC-0001', title: 'Professor provided excellent extra guidance sessions', description: 'Prof. Ananya conducted extra weekend doubt solving classes which was extremely helpful.', category: 'Academics', sentiment: 'Positive', priority: 'Low', status: 'Resolved', confidence: 96.8, date: '20/08/2026' }
+    ];
+
+    let complaints = [...INITIAL_COMPLAINTS];
+
+    function classifySentiment(text) {
+      if (!text || !text.trim()) return { sentiment: 'Neutral', confidence: 50.0, category: 'General', priority: 'Low' };
+      const lower = text.toLowerCase();
+      const pos = ['great', 'excellent', 'good', 'fast', 'helpful', 'clean', 'awesome', 'love', 'improved', 'smooth', 'satisfied', 'best'];
+      const neg = ['poor', 'bad', 'slow', 'broken', 'noisy', 'horrible', 'unhelpful', 'dirty', 'unfair', 'issues', 'worst', 'faulty', 'inaccurate', 'lagging', 'cold'];
+
+      let posCount = 0, negCount = 0;
+      pos.forEach(w => { if (lower.includes(w)) posCount++; });
+      neg.forEach(w => { if (lower.includes(w)) negCount++; });
+
+      let category = 'General';
+      if (lower.includes('wifi') || lower.includes('internet') || lower.includes('network') || lower.includes('lms') || lower.includes('portal')) category = 'IT & Network';
+      else if (lower.includes('food') || lower.includes('cafeteria') || lower.includes('canteen') || lower.includes('mess')) category = 'Dining & Mess';
+      else if (lower.includes('lab') || lower.includes('equipment') || lower.includes('room') || lower.includes('ac') || lower.includes('fan')) category = 'Facilities & Infra';
+      else if (lower.includes('grading') || lower.includes('teacher') || lower.includes('professor') || lower.includes('exam') || lower.includes('lecture')) category = 'Academics';
+
+      if (negCount > posCount) return { sentiment: 'Negative', confidence: Math.min(96.5, 62 + negCount * 11.5), category, priority: negCount > 1 ? 'High' : 'Medium' };
+      if (posCount > negCount) return { sentiment: 'Positive', confidence: Math.min(98.0, 68 + posCount * 9.5), category, priority: 'Low' };
+      return { sentiment: 'Neutral', confidence: 54.2, category, priority: 'Low' };
+    }
+
+    // SVG Icons
+    const icons = {
+      shield: `<svg class="w-6 h-6 stroke-[2.2] text-blue-600 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>`,
+      grid: `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>`,
+      plus: `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>`,
+      list: `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>`,
+      logout: `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>`,
+      arrow: `<svg class="w-4 h-4 inline ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>`,
+      lock: `<svg class="w-3.5 h-3.5 inline text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>`
+    };
+
+    function render() {
+      const appDiv = document.getElementById('app');
+      
+      if (currentView === 'signin' || currentView === 'signup') {
+        appDiv.innerHTML = `
+          <div class="min-h-screen w-full flex flex-col items-center justify-center p-6 bg-white">
+            <div class="w-full max-w-sm space-y-6">
+              
+              <div class="flex items-center justify-center space-x-2 text-slate-900">
+                ${icons.shield}
+                <span class="text-xl font-bold tracking-tight">CampusCare</span>
+              </div>
+
+              <div class="bg-slate-100 p-1 flex rounded-none border border-slate-200 text-xs font-semibold">
+                <button onclick="setRole('student')" class="flex-1 py-2 text-center ${userRole === 'student' ? 'bg-white text-blue-600 shadow-sm font-bold' : 'text-slate-500'}">Student Portal</button>
+                <button onclick="setRole('admin')" class="flex-1 py-2 text-center ${userRole === 'admin' ? 'bg-white text-blue-600 shadow-sm font-bold' : 'text-slate-500'}">Administrator Desk</button>
+              </div>
+
+              <div class="space-y-1">
+                <p class="text-xs font-bold uppercase tracking-wider text-blue-600">${currentView === 'signin' ? (userRole === 'admin' ? 'ADMINISTRATION PORTAL' : 'WELCOME BACK') : 'JOIN THE CAMPUS CONVERSATION'}</p>
+                <h1 class="text-3xl font-semibold tracking-tight text-slate-900">${currentView === 'signin' ? (userRole === 'admin' ? 'Sign in as Admin' : 'Sign in to your space') : 'Create your student account'}</h1>
+                <p class="text-sm text-slate-500 pt-1">${userRole === 'admin' ? 'Review anonymous student feedback.' : 'Track your complaints and stay in the loop.'}</p>
+              </div>
+
+              <form onsubmit="handleAuth(event)" class="space-y-4">
+                ${currentView === 'signup' ? `
+                  <div>
+                    <label class="block text-sm font-bold text-slate-800 mb-1">Full name</label>
+                    <input type="text" id="authName" required placeholder="Vivaan Sharma" value="${user.name}" class="w-full px-3.5 py-2.5 border border-slate-200 text-sm focus:outline-none focus:border-blue-600" />
+                  </div>
+                ` : ''}
+
+                <div>
+                  <label class="block text-sm font-bold text-slate-800 mb-1">${userRole === 'admin' ? 'Admin Email' : 'University email'}</label>
+                  <input type="email" id="authEmail" required placeholder="${userRole === 'admin' ? 'admin@university.edu' : 'you@university.edu'}" value="${user.email}" class="w-full px-3.5 py-2.5 border border-slate-200 text-sm focus:outline-none focus:border-blue-600" />
+                </div>
+
+                <div>
+                  <label class="block text-sm font-bold text-slate-800 mb-1">Password</label>
+                  <input type="password" required placeholder="Minimum 6 characters" value="123456" class="w-full px-3.5 py-2.5 border border-slate-200 text-sm focus:outline-none focus:border-blue-600" />
+                </div>
+
+                <button type="submit" class="w-full bg-[#1D61E7] hover:bg-blue-700 text-white font-medium py-3 text-sm transition flex items-center justify-center space-x-1">
+                  <span>${currentView === 'signin' ? (userRole === 'admin' ? 'Enter Admin Dashboard' : 'Sign in') : 'Create account'}</span>
+                  ${icons.arrow}
+                </button>
+              </form>
+
+              <div class="pt-2 text-xs text-slate-500 text-center">
+                ${currentView === 'signin' ? `
+                  <button onclick="setView('signup')" class="text-blue-600 font-semibold hover:underline">New here? Create a student account</button>
+                ` : `
+                  <button onclick="setView('signin')" class="text-blue-600 font-semibold hover:underline">Already have an account? Sign in</button>
+                `}
+              </div>
+
+              <div class="border-t border-slate-100 pt-4 text-xs text-slate-400">
+                ${icons.lock} <span>Student submissions are kept 100% Anonymous.</span>
+              </div>
+
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      // App Layout (Sidebar + Main View)
+      const totalCount = complaints.length;
+      const reviewingCount = complaints.filter(c => c.status === 'Being reviewed' || c.status === 'Submitted').length;
+      const resolvedCount = complaints.filter(c => c.status === 'Resolved').length;
+
+      const negativeComplaints = complaints.filter(c => c.sentiment === 'Negative');
+      const neutralComplaints = complaints.filter(c => c.sentiment === 'Neutral');
+      const positiveComplaints = complaints.filter(c => c.sentiment === 'Positive');
+
+      let mainContent = '';
+
+      // 1. STUDENT DASHBOARD
+      if (userRole === 'student' && currentView === 'dashboard') {
+        mainContent = `
+          <div class="space-y-6">
+            <div class="bg-[#1D61E7] text-white p-6 sm:p-8 relative overflow-hidden">
+              <div class="relative z-10 space-y-3 max-w-md">
+                <p class="text-xs font-bold uppercase tracking-wider text-blue-200">GOOD TO SEE YOU, ${user.name.split(' ')[0].toUpperCase()}</p>
+                <h3 class="text-3xl font-normal leading-tight">What needs attention today?</h3>
+                <p class="text-blue-100 text-sm">Submit an issue and let CampusCare route it to the right team.</p>
+                <button onclick="setView('submit')" class="bg-white text-blue-600 font-medium px-4 py-2 text-sm mt-2 transition hover:bg-blue-50">
+                  + Report an issue
+                </button>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div class="bg-white p-5 border border-slate-200 flex items-center space-x-4">
+                <div class="p-3 bg-blue-50 text-blue-600">${icons.list}</div>
+                <div>
+                  <p class="text-xs text-slate-500 font-medium">Total submitted</p>
+                  <p class="text-2xl font-semibold text-slate-900">${totalCount}</p>
+                </div>
+              </div>
+
+              <div class="bg-white p-5 border border-slate-200 flex items-center space-x-4">
+                <div class="p-3 bg-blue-50 text-blue-600">${icons.grid}</div>
+                <div>
+                  <p class="text-xs text-slate-500 font-medium">Being reviewed</p>
+                  <p class="text-2xl font-semibold text-slate-900">${reviewingCount}</p>
+                </div>
+              </div>
+
+              <div class="bg-white p-5 border border-slate-200 flex items-center space-x-4">
+                <div class="p-3 bg-blue-50 text-blue-600">${icons.shield}</div>
+                <div>
+                  <p class="text-xs text-slate-500 font-medium">Resolved</p>
+                  <p class="text-2xl font-semibold text-slate-900">${resolvedCount}</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="pt-4 space-y-3">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-xs font-bold uppercase tracking-wider text-blue-600">RECENT ACTIVITY</p>
+                  <h4 class="text-xl font-semibold text-slate-900">Your latest complaints</h4>
+                </div>
+                <button onclick="setView('history')" class="text-sm font-semibold text-blue-600 hover:underline flex items-center">
+                  <span>View all</span> ${icons.arrow}
+                </button>
+              </div>
+
+              <div class="space-y-3">
+                ${complaints.slice(0, 3).map(item => `
+                  <div class="bg-white border border-slate-200 p-4 flex justify-between items-center">
+                    <div>
+                      <div class="flex items-center space-x-2 text-xs">
+                        <span class="font-mono font-bold text-slate-400">${item.id}</span>
+                        <span class="px-2 py-0.5 bg-slate-100 text-slate-600 font-medium">${item.category}</span>
+                        <span class="${item.sentiment === 'Negative' ? 'text-rose-600' : 'text-emerald-600'} font-semibold">• ${item.sentiment} (${item.confidence}%)</span>
+                      </div>
+                      <h5 class="font-semibold text-slate-900 text-sm mt-1">${item.title}</h5>
+                    </div>
+                    <span class="px-2.5 py-1 text-xs font-medium border ${item.status === 'Resolved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}">${item.status}</span>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      // 2. SUBMIT FORM
+      else if (userRole === 'student' && currentView === 'submit') {
+        mainContent = `
+          <div class="space-y-6 max-w-2xl">
+            <div>
+              <p class="text-xs font-bold uppercase tracking-wider text-blue-600">NEW COMPLAINT</p>
+              <h3 class="text-3xl font-semibold text-slate-900 mt-1">Tell us what's happening.</h3>
+              <p class="text-sm text-slate-500 pt-1">Be specific. Our classifier will route your issue automatically.</p>
+            </div>
+
+            <form onsubmit="handleComplaintSubmit(event)" class="bg-white border border-slate-200 p-6 space-y-4">
+              <div>
+                <label class="block text-sm font-bold text-slate-800 mb-1">Short title</label>
+                <input type="text" id="cTitle" required placeholder="e.g. Wi-Fi unavailable in library" class="w-full px-3.5 py-2.5 border border-slate-200 text-sm focus:outline-none focus:border-blue-600" />
+              </div>
+
+              <div>
+                <label class="block text-sm font-bold text-slate-800 mb-1">Describe the issue</label>
+                <textarea rows="5" id="cDesc" required placeholder="Include useful details..." class="w-full px-3.5 py-2.5 border border-slate-200 text-sm focus:outline-none focus:border-blue-600 resize-none"></textarea>
+              </div>
+
+              <div class="p-3 bg-slate-50 border border-slate-200 text-xs text-slate-500 flex items-center space-x-2">
+                ${icons.lock}
+                <span>Your submission is kept 100% Anonymous to college staff.</span>
+              </div>
+
+              <button type="submit" class="bg-[#1D61E7] hover:bg-blue-700 text-white font-medium py-3 px-6 text-sm transition flex items-center space-x-1">
+                <span>Submit complaint</span>
+                ${icons.arrow}
+              </button>
+            </form>
+          </div>
+        `;
+      }
+
+      // 3. HISTORY TABLE
+      else if (userRole === 'student' && currentView === 'history') {
+        const filtered = categoryFilter === 'All categories' ? complaints : complaints.filter(c => c.category === categoryFilter);
+        mainContent = `
+          <div class="space-y-6">
+            <div>
+              <p class="text-xs font-bold uppercase tracking-wider text-blue-600">YOUR HISTORY</p>
+              <h3 class="text-3xl font-semibold text-slate-900 mt-1">Complaint history</h3>
+            </div>
+
+            <div class="flex items-center space-x-2 text-xs">
+              <span class="text-slate-500 font-semibold">Filter:</span>
+              <select onchange="setCategoryFilter(this.value)" class="bg-white border border-slate-200 px-3 py-1.5 focus:outline-none">
+                <option value="All categories" ${categoryFilter === 'All categories' ? 'selected' : ''}>All categories</option>
+                <option value="IT & Network" ${categoryFilter === 'IT & Network' ? 'selected' : ''}>IT & Network</option>
+                <option value="Facilities & Infra" ${categoryFilter === 'Facilities & Infra' ? 'selected' : ''}>Facilities & Infra</option>
+                <option value="Dining & Mess" ${categoryFilter === 'Dining & Mess' ? 'selected' : ''}>Dining & Mess</option>
+                <option value="Academics" ${categoryFilter === 'Academics' ? 'selected' : ''}>Academics</option>
+              </select>
+            </div>
+
+            <div class="bg-white border border-slate-200 overflow-x-auto">
+              <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr class="border-b border-slate-200 bg-slate-50 text-slate-500 font-bold uppercase">
+                    <th class="py-3 px-4">ID / COMPLAINT</th>
+                    <th class="py-3 px-4">CATEGORY</th>
+                    <th class="py-3 px-4">PRIORITY</th>
+                    <th class="py-3 px-4">STATUS</th>
+                    <th class="py-3 px-4 text-right">CONFIDENCE</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  ${filtered.map(item => `
+                    <tr>
+                      <td class="py-3 px-4">
+                        <span class="font-bold text-slate-900 block font-mono">${item.id}</span>
+                        <p class="font-medium text-slate-800">${item.title}</p>
+                        <p class="text-[11px] text-slate-400">${item.date}</p>
+                      </td>
+                      <td class="py-3 px-4">
+                        <span class="font-bold text-blue-600 block">${item.category}</span>
+                        <span class="text-[11px] text-slate-400">${item.sentiment}</span>
+                      </td>
+                      <td class="py-3 px-4 font-semibold ${item.priority === 'High' ? 'text-rose-600' : 'text-slate-600'}">${item.priority}</td>
+                      <td class="py-3 px-4 font-medium">${item.status}</td>
+                      <td class="py-3 px-4 text-right font-bold">${item.confidence}%</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      }
+
+      // 4. ADMIN DASHBOARD
+      else if (userRole === 'admin' && currentView === 'admin-dashboard') {
+        mainContent = `
+          <div class="space-y-6">
+            <div class="bg-[#0F172A] text-white p-6 border border-slate-800">
+              <span class="bg-amber-500/20 text-amber-300 text-xs font-mono font-bold px-2 py-0.5">ANONYMOUS FEEDBACK ENGINE</span>
+              <h3 class="text-3xl font-semibold mt-2">College Sentiment Hub</h3>
+              <p class="text-slate-300 text-sm mt-1">Automated classification via TF-IDF & Naive Bayes model. Student identities are masked.</p>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div onclick="setAdminTab('Negative')" class="bg-white p-5 border border-slate-200 cursor-pointer hover:border-rose-400 transition">
+                <div class="flex justify-between items-center text-xs font-bold text-rose-600">
+                  <span>Negative Complaints</span>
+                  <span class="bg-rose-50 px-2 py-0.5">${Math.round((negativeComplaints.length / totalCount) * 100)}%</span>
+                </div>
+                <p class="text-3xl font-bold text-slate-900 mt-2">${negativeComplaints.length}</p>
+                <p class="text-xs text-slate-500 mt-1">Requires immediate intervention</p>
+              </div>
+
+              <div onclick="setAdminTab('Neutral')" class="bg-white p-5 border border-slate-200 cursor-pointer hover:border-amber-400 transition">
+                <div class="flex justify-between items-center text-xs font-bold text-amber-600">
+                  <span>Neutral Feedback</span>
+                  <span class="bg-amber-50 px-2 py-0.5">${Math.round((neutralComplaints.length / totalCount) * 100)}%</span>
+                </div>
+                <p class="text-3xl font-bold text-slate-900 mt-2">${neutralComplaints.length}</p>
+                <p class="text-xs text-slate-500 mt-1">General observations & feedback</p>
+              </div>
+
+              <div onclick="setAdminTab('Positive')" class="bg-white p-5 border border-slate-200 cursor-pointer hover:border-emerald-400 transition">
+                <div class="flex justify-between items-center text-xs font-bold text-emerald-600">
+                  <span>Positive Praise</span>
+                  <span class="bg-emerald-50 px-2 py-0.5">${Math.round((positiveComplaints.length / totalCount) * 100)}%</span>
+                </div>
+                <p class="text-3xl font-bold text-slate-900 mt-2">${positiveComplaints.length}</p>
+                <p class="text-xs text-slate-500 mt-1">Acknowledged facilities & teachers</p>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      // 5. ADMIN FEEDBACK LIST
+      else if (userRole === 'admin' && currentView === 'admin-feedback') {
+        const filteredAdmin = complaints.filter(item => {
+          const mS = adminSentimentTab === 'All' || item.sentiment === adminSentimentTab;
+          const mC = adminCategoryFilter === 'All' || item.category === adminCategoryFilter;
+          const mQ = !adminSearch || item.title.toLowerCase().includes(adminSearch.toLowerCase()) || item.description.toLowerCase().includes(adminSearch.toLowerCase());
+          return mS && mC && mQ;
+        });
+
+        mainContent = `
+          <div class="space-y-6">
+            <div>
+              <p class="text-xs font-bold uppercase tracking-wider text-amber-600">ADMINISTRATION DESK</p>
+              <h3 class="text-3xl font-semibold text-slate-900 mt-1">Anonymous Student Feedback</h3>
+            </div>
+
+            <div class="bg-white border border-slate-200 p-4 space-y-4">
+              <div class="flex flex-wrap gap-2 text-xs font-semibold">
+                <button onclick="setAdminSentimentTab('All')" class="px-3 py-1.5 ${adminSentimentTab === 'All' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}">All (${complaints.length})</button>
+                <button onclick="setAdminSentimentTab('Negative')" class="px-3 py-1.5 ${adminSentimentTab === 'Negative' ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-700'}">Negative (${negativeComplaints.length})</button>
+                <button onclick="setAdminSentimentTab('Neutral')" class="px-3 py-1.5 ${adminSentimentTab === 'Neutral' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-700'}">Neutral (${neutralComplaints.length})</button>
+                <button onclick="setAdminSentimentTab('Positive')" class="px-3 py-1.5 ${adminSentimentTab === 'Positive' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700'}">Positive (${positiveComplaints.length})</button>
+              </div>
+
+              <input type="text" oninput="setAdminSearch(this.value)" placeholder="Search keywords..." value="${adminSearch}" class="w-full px-3 py-2 border border-slate-200 text-xs focus:outline-none" />
+            </div>
+
+            <div class="space-y-3">
+              ${filteredAdmin.map(item => `
+                <div class="bg-white border border-slate-200 p-4 space-y-2">
+                  <div class="flex justify-between items-center text-xs">
+                    <div class="flex items-center space-x-2">
+                      <span class="font-mono font-bold text-slate-400">${item.id}</span>
+                      <span class="bg-slate-100 px-2 py-0.5 text-slate-600 font-semibold">${icons.lock} Student Anonymous</span>
+                      <span class="bg-blue-50 text-blue-700 px-2 py-0.5 font-semibold">${item.category}</span>
+                      <span class="font-bold px-2 py-0.5 ${item.sentiment === 'Negative' ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}">${item.sentiment} (${item.confidence}%)</span>
+                    </div>
+                    <span class="text-slate-400 font-mono">${item.date}</span>
+                  </div>
+
+                  <div>
+                    <h4 class="font-semibold text-slate-900 text-sm">${item.title}</h4>
+                    <p class="text-xs text-slate-600 mt-1">${item.description}</p>
+                  </div>
+
+                  <div class="pt-2 flex justify-between items-center bg-slate-50 p-2 text-xs">
+                    <span class="font-semibold">Status: <span class="text-blue-600">${item.status}</span></span>
+                    <div class="space-x-1">
+                      <button onclick="updateStatus('${item.id}', 'Submitted')" class="px-2 py-1 bg-white border text-[11px]">Submitted</button>
+                      <button onclick="updateStatus('${item.id}', 'Being reviewed')" class="px-2 py-1 bg-white border text-[11px]">Reviewing</button>
+                      <button onclick="updateStatus('${item.id}', 'Resolved')" class="px-2 py-1 bg-emerald-600 text-white border text-[11px]">Resolved</button>
+                    </div>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      appDiv.innerHTML = `
+        <div class="min-h-screen flex flex-col md:flex-row">
+          <aside class="w-full md:w-20 bg-[#111827] text-slate-300 flex md:flex-col justify-between items-center py-4 px-6 md:px-0 md:py-6 border-b md:border-b-0 md:border-r border-slate-800">
+            <div class="flex md:flex-col items-center space-x-6 md:space-x-0 md:space-y-6">
+              <div onclick="setView(userRole === 'admin' ? 'admin-dashboard' : 'dashboard')" class="cursor-pointer">${icons.shield}</div>
+              
+              <nav class="flex md:flex-col items-center space-x-2 md:space-x-0 md:space-y-3">
+                ${userRole === 'student' ? `
+                  <button onclick="setView('dashboard')" class="p-3 ${currentView === 'dashboard' ? 'bg-[#1E293B] text-white border-l-2 border-blue-500' : 'text-slate-400'}">${icons.grid}</button>
+                  <button onclick="setView('submit')" class="p-3 ${currentView === 'submit' ? 'bg-[#1E293B] text-white border-l-2 border-blue-500' : 'text-slate-400'}">${icons.plus}</button>
+                  <button onclick="setView('history')" class="p-3 ${currentView === 'history' ? 'bg-[#1E293B] text-white border-l-2 border-blue-500' : 'text-slate-400'}">${icons.list}</button>
+                ` : `
+                  <button onclick="setView('admin-dashboard')" class="p-3 ${currentView === 'admin-dashboard' ? 'bg-[#1E293B] text-white border-l-2 border-amber-500' : 'text-slate-400'}">${icons.grid}</button>
+                  <button onclick="setView('admin-feedback')" class="p-3 ${currentView === 'admin-feedback' ? 'bg-[#1E293B] text-white border-l-2 border-amber-500' : 'text-slate-400'}">${icons.list}</button>
+                `}
+              </nav>
+            </div>
+
+            <button onclick="setView('signin')" class="text-slate-500 hover:text-white p-3">${icons.logout}</button>
+          </aside>
+
+          <main class="flex-1 max-w-5xl mx-auto px-6 py-8 w-full">
+            <div class="flex justify-between items-center mb-6 pb-4 border-b border-slate-200">
+              <div>
+                <p class="text-xs font-bold uppercase tracking-wider text-blue-600">CAMPUSCARE / <span class="${userRole === 'admin' ? 'text-amber-600' : ''}">${userRole.toUpperCase()}</span></p>
+                <h2 class="text-2xl font-semibold text-slate-900">${userRole === 'admin' ? 'Admin Feedback Portal' : 'Your campus, heard'}</h2>
+              </div>
+              <button onclick="toggleRole()" class="px-3 py-1.5 border border-slate-300 bg-white text-xs font-semibold hover:bg-slate-50">
+                Switch to ${userRole === 'student' ? 'Admin UI' : 'Student UI'}
+              </button>
+            </div>
+
+            ${mainContent}
+          </main>
+        </div>
+      `;
+    }
+
+    // Actions
+    function setRole(r) { userRole = r; render(); }
+    function setView(v) { currentView = v; render(); }
+    function toggleRole() {
+      userRole = userRole === 'student' ? 'admin' : 'student';
+      currentView = userRole === 'admin' ? 'admin-dashboard' : 'dashboard';
+      render();
+    }
+    function setCategoryFilter(val) { categoryFilter = val; render(); }
+    function setAdminSentimentTab(val) { adminSentimentTab = val; render(); }
+    function setAdminTab(val) { adminSentimentTab = val; currentView = 'admin-feedback'; render(); }
+    function setAdminSearch(val) { adminSearch = val; render(); }
+
+    function handleAuth(e) {
+      e.preventDefault();
+      const emailInput = document.getElementById('authEmail');
+      const nameInput = document.getElementById('authName');
+      if (emailInput) user.email = emailInput.value;
+      if (nameInput) user.name = nameInput.value;
+      currentView = userRole === 'admin' ? 'admin-dashboard' : 'dashboard';
+      render();
+    }
+
+    function handleComplaintSubmit(e) {
+      e.preventDefault();
+      const title = document.getElementById('cTitle').value;
+      const desc = document.getElementById('cDesc').value;
+      if (!title || !desc) return;
+
+      const analysis = classifySentiment(title + ' ' + desc);
+      const newComplaint = {
+        id: 'CC-000' + (complaints.length + 1),
+        title,
+        description: desc,
+        category: analysis.category,
+        sentiment: analysis.sentiment,
+        priority: analysis.priority,
+        status: 'Submitted',
+        confidence: analysis.confidence,
+        date: new Date().toLocaleDateString('en-GB')
+      };
+
+      complaints.unshift(newComplaint);
+      currentView = 'history';
+      render();
+    }
+
+    function updateStatus(id, st) {
+      complaints = complaints.map(c => c.id === id ? { ...c, status: st } : c);
+      render();
+    }
+
+    // Initial render
+    render();
+  </script>
+</body>
+</html>
